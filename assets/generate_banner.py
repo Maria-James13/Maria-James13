@@ -21,6 +21,8 @@ IVORY = (228, 225, 218)
 SUB = (176, 186, 204)
 MUTED = (156, 164, 182)
 NAVY = (10, 14, 26)
+# Real aurora oxygen green — muted, not neon.
+AURORA_GREEN = np.array([112, 186, 148], dtype=np.float32)
 
 
 def font(name: str, size: int) -> ImageFont.FreeTypeFont:
@@ -35,6 +37,27 @@ def crop_cinematic(src: Image.Image) -> Image.Image:
     top = int((sh - th) * 0.46)
     top = max(0, min(top, sh - th))
     return img.crop((0, top, sw, top + th)).resize((W, H), Image.Resampling.LANCZOS)
+
+
+def add_green_ribbon(img: Image.Image) -> Image.Image:
+    """A second, thinner curtain of aurora green riding the existing flow."""
+    arr = np.array(img, dtype=np.float32)
+    lum = arr @ np.array([0.21, 0.62, 0.17], dtype=np.float32)
+    ribbon = np.clip((lum - 38) / 85.0, 0, 1) ** 1.15
+    # Offset so it reads as its own strand, not a recolor of the blue.
+    strand = np.roll(np.roll(ribbon, -7, axis=1), -5, axis=0)
+    strand = np.clip((strand - 0.22) / 0.58, 0, 1)
+    yy, xx = np.ogrid[:H, :W]
+    # Strongest along the left-to-center sweep; a quieter echo on the right dissolve.
+    where = np.exp(-(((xx - W * 0.36) / 400) ** 2 + ((yy - H * 0.64) / 130) ** 2))
+    where = where + 0.45 * np.exp(-(((xx - W * 0.74) / 340) ** 2 + ((yy - H * 0.30) / 110) ** 2))
+    # Keep the name island clean.
+    well = np.exp(-(((xx - W / 2) / 260) ** 2 + ((yy - H / 2 + 8) / 82) ** 2))
+    amt = np.clip(strand * np.clip(where, 0, 1) * (1.0 - 0.85 * well), 0, 1) * 0.26
+    mixed = arr * (1.0 - amt[..., None] * 0.72) + AURORA_GREEN * amt[..., None]
+    mixed[..., 1] += 16.0 * amt
+    mixed[..., 0] *= 1.0 - 0.10 * amt
+    return Image.fromarray(np.clip(mixed, 0, 255).astype(np.uint8), "RGB")
 
 
 def dim_identity_well(img: Image.Image) -> Image.Image:
@@ -140,7 +163,7 @@ FONT_TAG = font("segoeuil.ttf", 15)
 
 
 def main() -> None:
-    plate = edge_vignette(dim_identity_well(crop_cinematic(Image.open(BASE))))
+    plate = edge_vignette(dim_identity_well(add_green_ribbon(crop_cinematic(Image.open(BASE)))))
     ident = identity_overlay()
     still = Image.alpha_composite(plate.convert("RGBA"), ident)
     still.convert("RGB").save(OUT_PNG)

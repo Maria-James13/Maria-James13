@@ -14,7 +14,7 @@ OUT_PNG = ROOT / "github-banner.png"
 
 W, H = 1080, 360
 FRAMES = 24
-DURATION_MS = 110
+DURATION_MS = 130
 
 # Restrained palette: cyan → ice blue → violet
 NAVY = (5, 8, 16)
@@ -27,8 +27,10 @@ MUTED = (148, 163, 184)
 INK = (226, 232, 240)
 
 SAFE = (int(W * 0.30), int(H * 0.16), int(W * 0.70), int(H * 0.84))
+NAME_BOX = (int(W * 0.27), int(H * 0.26), int(W * 0.73), int(H * 0.74))
 LEFT_MAX = int(W * 0.31)
 RIGHT_MIN = int(W * 0.69)
+MOTIF_Y = 46
 
 
 def font(name: str, size: int) -> ImageFont.FreeTypeFont:
@@ -55,6 +57,10 @@ def in_safe(x, y, pad: int = 8) -> bool:
     return SAFE[0] - pad < x < SAFE[2] + pad and SAFE[1] - pad < y < SAFE[3] + pad
 
 
+def in_name(x, y, pad: int = 6) -> bool:
+    return NAME_BOX[0] - pad < x < NAME_BOX[2] + pad and NAME_BOX[1] - pad < y < NAME_BOX[3] + pad
+
+
 def add_glow(base: Image.Image, overlay: Image.Image, blur: float, amount: float = 1.0) -> Image.Image:
     glow = overlay.filter(ImageFilter.GaussianBlur(blur))
     if amount < 1:
@@ -73,10 +79,10 @@ def background() -> Image.Image:
     arr = np.zeros((H, W, 4), dtype=np.float32)
     arr[..., 0], arr[..., 1], arr[..., 2], arr[..., 3] = NAVY[0], NAVY[1], NAVY[2], 255
 
-    radial_blob(arr, W / 2, H / 2, 300, 150, (70, 120, 200), 0.13)
-    radial_blob(arr, 150, H * 0.45, 240, 170, (20, 90, 130), 0.10)
-    radial_blob(arr, W - 130, H * 0.48, 260, 180, (70, 50, 130), 0.11)
-    radial_blob(arr, W / 2, 20, 280, 90, (40, 70, 140), 0.05)
+    radial_blob(arr, W / 2, H / 2 + 4, 320, 128, (78, 128, 210), 0.16)
+    radial_blob(arr, 130, H * 0.48, 220, 160, (18, 80, 118), 0.08)
+    radial_blob(arr, W - 120, H * 0.46, 250, 170, (68, 48, 128), 0.10)
+    radial_blob(arr, W / 2, 18, 260, 70, (40, 70, 140), 0.04)
 
     yy, xx = np.ogrid[:H, :W]
     nx = (xx - W / 2) / (W * 0.52)
@@ -88,64 +94,69 @@ def background() -> Image.Image:
 
 
 def make_left_data(rng: np.random.Generator):
-    """Fragmented raw-data field that funnels rightward into the center."""
-    columns = [
-        (36, np.linspace(36, H - 40, 6)),
-        (84, np.linspace(48, H - 70, 5)),
-        (138, np.array([72, 118, 168, 228])),
-        (192, np.array([96, 150, 204])),
-        (248, np.array([124, 176])),
-    ]
+    """Sparse, slightly chaotic field — elegant raw information, not a net."""
     nodes = []
-    for x, ys in columns:
-        for y in ys:
-            nodes.append((float(x + rng.normal(0, 3.2)), float(np.clip(y + rng.normal(0, 6), 26, H - 34))))
+    # uneven clusters, not columns
+    for cx, cy, n, spread in (
+        (42, 88, 5, 28),
+        (78, 210, 4, 34),
+        (128, 132, 4, 26),
+        (176, 248, 3, 22),
+        (220, 108, 3, 18),
+    ):
+        for _ in range(n):
+            nodes.append(
+                (
+                    float(np.clip(cx + rng.normal(0, spread * 0.7), 18, LEFT_MAX - 8)),
+                    float(np.clip(cy + rng.normal(0, spread), 32, H - 28)),
+                )
+            )
+    loners = []
+    for _ in range(7):
+        p = (
+            float(rng.uniform(22, LEFT_MAX - 16)),
+            float(rng.uniform(40, H - 36)),
+        )
+        loners.append(p)
+        nodes.append(p)
 
     edges = []
     for i, a in enumerate(nodes):
-        best = []
-        for j, b in enumerate(nodes):
-            if b[0] <= a[0] + 6:
+        if a in loners:
+            continue
+        cand = []
+        for b in nodes:
+            if b is a or b in loners:
                 continue
-            dist = math.hypot(b[0] - a[0], b[1] - a[1])
-            if dist < 110:
-                best.append((dist, b))
-        best.sort()
-        for _, b in best[:2]:
-            if rng.random() < 0.85:
-                edges.append((a, b))
+            dx = b[0] - a[0]
+            dist = math.hypot(dx, b[1] - a[1])
+            if 18 < dist < 78 and dx > -12:
+                cand.append((dist, b))
+        cand.sort()
+        if cand and rng.random() < 0.62:
+            edges.append((a, cand[0][1]))
 
     streams = []
-    for y0 in (64, 132, 198, 268):
+    for y0 in (78, 168, 254):
         pts = []
-        for x in range(18, LEFT_MAX - 12, 20):
-            y = y0 + 6 * math.sin(x * 0.038 + y0 * 0.015)
-            converge = (x / LEFT_MAX) * 18
-            y = lerp(y, H * 0.48, converge / 80)
-            pts.append((x, float(np.clip(y, 28, H - 28))))
+        for x in range(16, LEFT_MAX - 18, 26):
+            y = y0 + 5 * math.sin(x * 0.042 + y0)
+            pts.append((x, float(np.clip(y, 30, H - 30))))
         streams.append(pts)
     return nodes, edges, streams
 
 
 def make_right_net(rng: np.random.Generator):
-    """Structured intelligence: irregular layered net, denser toward outputs."""
+    """Hierarchical net that converges to three output nodes."""
     layout = [
-        (W - 308, 4),
-        (W - 222, 7),
-        (W - 136, 5),
-        (W - 52, 3),
+        (W - 300, np.linspace(H * 0.22, H * 0.78, 5)),
+        (W - 214, np.linspace(H * 0.18, H * 0.82, 7)),
+        (W - 128, np.linspace(H * 0.26, H * 0.74, 5)),
+        (W - 50, np.linspace(H * 0.36, H * 0.64, 3)),
     ]
     layers = []
-    for li, (x, n) in enumerate(layout):
-        lo, hi = (H * 0.20, H * 0.78) if li < 3 else (H * 0.32, H * 0.68)
-        raw = np.sort(rng.uniform(lo, hi, n))
-        ys = []
-        last = lo - 10
-        for y in raw:
-            y = max(y, last + 18)
-            ys.append(min(y, hi))
-            last = ys[-1]
-        layer = [(float(x + rng.normal(0, 4.8)), float(y)) for y in ys]
+    for x, ys in layout:
+        layer = [(float(x + rng.normal(0, 1.6)), float(y + rng.normal(0, 3.0))) for y in ys]
         layers.append(layer)
 
     nodes = [p for layer in layers for p in layer]
@@ -153,37 +164,49 @@ def make_right_net(rng: np.random.Generator):
     for li, layer in enumerate(layers[:-1]):
         nxt = layers[li + 1]
         for i, a in enumerate(layer):
-            targets = {i % len(nxt), (i + 1) % len(nxt), (i * 2) % len(nxt)}
+            t0 = int(round(i * (len(nxt) - 1) / max(1, len(layer) - 1)))
+            targets = {t0, min(len(nxt) - 1, t0 + 1)}
             for ti in targets:
                 edges.append((a, nxt[ti]))
-        if li == 0:
-            edges.append((layer[0], layers[2][0]))
-            edges.append((layer[-1], layers[2][-1]))
+    # two intentional skip links into the output triad
+    edges.append((layers[1][0], layers[3][0]))
+    edges.append((layers[1][-1], layers[3][-1]))
     return nodes, edges, layers
 
 
 def draw_streams(draw, streams):
     for pts in streams:
         for a, b in zip(pts, pts[1:]):
-            if in_safe(b[0], b[1], 20):
+            if in_safe(b[0], b[1], 20) or in_name(b[0], b[1], 8):
                 continue
             draw.line([a, b], fill=(*CYAN, 28), width=1)
 
 
-def draw_sparkline(draw):
-    """Quiet, readable training curve — one ice-blue series, no rainbow."""
-    x0, y0, x1, y1 = 28, H - 78, 168, H - 22
-    draw.rounded_rectangle((x0, y0, x1, y1), radius=4, fill=(6, 10, 18, 150), outline=(*CYAN, 38))
-    draw.text((x0 + 8, y0 + 4), "LOSS", font=FONT_TINY, fill=(*CYAN, 140))
-    xs = np.linspace(0, 1, 36)
-    ys = 0.90 * np.exp(-3.6 * xs) + 0.08 + 0.025 * np.sin(16 * xs)
+def make_motif():
+    """Signature: noise → cadence along a quiet meridian above the name."""
     pts = []
-    for x, y in zip(xs, ys):
-        px = x0 + 10 + x * (x1 - x0 - 18)
-        py = y1 - 8 - y * (y1 - y0 - 20)
-        pts.append((px, py))
-    draw.line(pts, fill=(*CYAN, 175), width=2)
-    draw.ellipse((pts[-1][0] - 2.2, pts[-1][1] - 2.2, pts[-1][0] + 2.2, pts[-1][1] + 2.2), fill=(*ICE, 200))
+    for i in range(22):
+        u = i / 21
+        x = 28 + u * (W - 56)
+        jitter = (1 - u) ** 1.6 * 11
+        spacing_noise = (1 - u) * 7 * math.sin(i * 2.3)
+        y = MOTIF_Y + jitter * math.sin(i * 1.7) + spacing_noise * 0.15
+        r = 1.1 + u * 1.35
+        pts.append((x, y, r, u))
+    return pts
+
+
+def draw_motif(draw, pts):
+    visible = [(x, y) for x, y, _r, _u in pts]
+    for a, b in zip(visible, visible[1:]):
+        if abs(b[0] - a[0]) > 90:
+            continue
+        mx = (a[0] + b[0]) / 2
+        col = journey_color(mx)
+        draw.line([a, b], fill=(*col, 48), width=1)
+    for x, y, r, u in pts:
+        col = journey_color(x)
+        draw.ellipse((x - r, y - r, x + r, y + r), fill=(*col, int(70 + 90 * u)))
 
 
 def draw_nodes(draw, nodes, kind: str):
@@ -192,8 +215,8 @@ def draw_nodes(draw, nodes, kind: str):
             continue
         col = journey_color(x)
         if kind == "data":
-            r = 2.1 if i % 4 else 2.7
-            draw.ellipse((x - r, y - r, x + r, y + r), fill=(*col, 200))
+            r = 1.6 if i % 3 else 2.2
+            draw.ellipse((x - r, y - r, x + r, y + r), fill=(*col, 175))
         else:
             r = 3.3 if i < len(nodes) - 3 else 4.1
             if i % 3 == 0:
@@ -233,8 +256,8 @@ def draw_identity(base: Image.Image) -> Image.Image:
     # soft radial presence behind the name — ice blue, not neon
     blob = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ba = np.zeros((H, W, 4), dtype=np.float32)
-    radial_blob(ba, cx, cy + 6, 230, 96, BLUE, 0.72)
-    ba[..., 3] = np.clip(ba[..., 0] * 0.42, 0, 110)
+    radial_blob(ba, cx, cy + 4, 250, 102, BLUE, 0.62)
+    ba[..., 3] = np.clip(ba[..., 0] * 0.38, 0, 96)
     np.clip(ba, 0, 255, out=ba)
     blob = Image.fromarray(ba.astype(np.uint8), "RGBA").filter(ImageFilter.GaussianBlur(18))
     img = Image.alpha_composite(base, blob)
@@ -244,7 +267,7 @@ def draw_identity(base: Image.Image) -> Image.Image:
     glow2 = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     g2 = ImageDraw.Draw(glow2, "RGBA")
     draw_tracked(g2, name, cy - 54, FONT_TITLE, (*WHITE, 90), 6)
-    img = add_glow(img, glow2, 5.5, 0.85)
+    img = add_glow(img, glow2, 4.8, 0.70)
 
     sharp = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     sd = ImageDraw.Draw(sharp, "RGBA")
@@ -255,39 +278,55 @@ def draw_identity(base: Image.Image) -> Image.Image:
     sd.text((cx - (bbox[2] - bbox[0]) / 2, cy + 40), statement, font=FONT_TAG, fill=(*MUTED, 185))
     img = Image.alpha_composite(img, sharp)
 
+    atmosphere = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    ad = ImageDraw.Draw(atmosphere, "RGBA")
+    rng = np.random.default_rng(9)
+    for _ in range(10):
+        x = float(rng.uniform(W * 0.34, W * 0.66))
+        y = float(rng.uniform(H * 0.20, H * 0.80))
+        if in_name(x, y, 18):
+            continue
+        r = float(rng.uniform(0.5, 1.0))
+        ad.ellipse((x - r, y - r, x + r, y + r), fill=(*BLUE, int(rng.integers(18, 32))))
+    img = Image.alpha_composite(img, atmosphere)
+
     sig = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     sgd = ImageDraw.Draw(sig, "RGBA")
-    mark = "ML  ·  NLP  ·  PREDICTIVE SYSTEMS"
-    mb = sgd.textbbox((0, 0), mark, font=FONT_TINY)
-    sgd.text((W - (mb[2] - mb[0]) - 22, H - 20), mark, font=FONT_TINY, fill=(*VIOLET, 110))
+    label = "SPECIALIZATION"
+    skills = "ML  ·  NLP  ·  PREDICTIVE SYSTEMS"
+    lb = sgd.textbbox((0, 0), label, font=FONT_TINY)
+    sb = sgd.textbbox((0, 0), skills, font=FONT_TINY)
+    rx = W - 26
+    sgd.text((rx - (lb[2] - lb[0]), H - 36), label, font=FONT_TINY, fill=(*MUTED, 130))
+    sgd.text((rx - (sb[2] - sb[0]), H - 22), skills, font=FONT_TINY, fill=(*ICE, 175))
     return Image.alpha_composite(img, sig)
 
 
-def static_base(left_nodes, left_edges, streams, right_nodes, right_edges) -> Image.Image:
+def static_base(left_nodes, left_edges, streams, right_nodes, right_edges, motif) -> Image.Image:
     img = background()
     dust = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     dd = ImageDraw.Draw(dust, "RGBA")
     dust_rng = np.random.default_rng(4)
-    for _ in range(36):
+    for _ in range(28):
         x, y = float(dust_rng.uniform(8, W - 8)), float(dust_rng.uniform(8, H - 8))
-        if in_safe(x, y, 36):
+        if in_name(x, y, 20) or in_safe(x, y, 20):
             continue
-        r = float(dust_rng.uniform(0.5, 1.3))
-        dd.ellipse((x - r, y - r, x + r, y + r), fill=(*journey_color(x), int(dust_rng.integers(16, 38))))
+        r = float(dust_rng.uniform(0.5, 1.2))
+        dd.ellipse((x - r, y - r, x + r, y + r), fill=(*journey_color(x), int(dust_rng.integers(14, 32))))
     img = Image.alpha_composite(img, dust)
     net = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     nd = ImageDraw.Draw(net, "RGBA")
     draw_streams(nd, streams)
-    draw_edges(nd, left_edges, 70)
-    draw_edges(nd, right_edges, 88)
+    draw_motif(nd, motif)
+    draw_edges(nd, left_edges, 52)
+    draw_edges(nd, right_edges, 105)
     draw_nodes(nd, left_nodes, "data")
     draw_nodes(nd, right_nodes, "intel")
-    draw_sparkline(nd)
     mid = net.resize((W // 2, H // 2), Image.Resampling.BILINEAR)
     mid = mid.filter(ImageFilter.GaussianBlur(2.4)).resize((W, H), Image.Resampling.BILINEAR)
-    mid.putalpha(mid.split()[-1].point(lambda a: int(a * 0.45)))
+    mid.putalpha(mid.split()[-1].point(lambda a: int(a * 0.40)))
     img = Image.alpha_composite(img, mid)
-    img = add_glow(img, net, 1.15, 0.55)
+    img = add_glow(img, net, 1.1, 0.50)
     img = Image.alpha_composite(img, net)
     return draw_identity(img)
 
@@ -301,38 +340,45 @@ def draw_particles(draw, edges, t, speed, count_mod):
         u = (t * speed + ei * 0.11) % 1.0
         x = lerp(p[0], q[0], u)
         y = lerp(p[1], q[1], u)
-        if in_safe(x, y, 4):
+        if in_safe(x, y, 4) or in_name(x, y, 4):
             continue
         col = journey_color(x)
-        draw.ellipse((x - 1.5, y - 1.5, x + 1.5, y + 1.5), fill=(*col, 200))
+        draw.ellipse((x - 1.3, y - 1.3, x + 1.3, y + 1.3), fill=(*col, 160))
 
 
-def frame(base, t, left_nodes, left_edges, right_nodes, right_edges) -> Image.Image:
+def frame(base, t, left_nodes, left_edges, right_nodes, right_edges, motif) -> Image.Image:
     img = base.copy()
     motion = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     md = ImageDraw.Draw(motion, "RGBA")
 
-    draw_particles(md, left_edges, t, 0.32, 2)
-    draw_particles(md, right_edges, t, 0.22, 3)
+    draw_particles(md, left_edges, t, 0.18, 3)
+    draw_particles(md, right_edges, t, 0.12, 4)
 
-    # occasional right-side activation, never the whole field
-    for i in (1, 4, 8, len(right_nodes) - 1, len(right_nodes) - 2):
-        if i >= len(right_nodes):
+    for i in (0, 3, 7):
+        if i >= len(left_nodes):
+            continue
+        x, y = left_nodes[i]
+        pulse = 0.5 + 0.5 * math.sin(2 * math.pi * (t * 0.45) + i)
+        if pulse < 0.72:
+            continue
+        md.ellipse((x - 3.2, y - 3.2, x + 3.2, y + 3.2), outline=(*CYAN, int(28 + 24 * pulse)), width=1)
+
+    for i in (len(right_nodes) - 1, len(right_nodes) - 2, len(right_nodes) - 3, 6):
+        if i >= len(right_nodes) or i < 0:
             continue
         x, y = right_nodes[i]
-        pulse = 0.5 + 0.5 * math.sin(2 * math.pi * (t * 0.7) + i * 0.9)
-        if pulse < 0.55:
+        pulse = 0.5 + 0.5 * math.sin(2 * math.pi * (t * 0.4) + i * 0.8)
+        if pulse < 0.62:
             continue
-        r = 5.5 + pulse * 2.0
+        r = 6.0 + pulse * 1.6
         col = journey_color(x)
-        md.ellipse((x - r, y - r, x + r, y + r), outline=(*col, int(30 + 50 * pulse)), width=1)
+        md.ellipse((x - r, y - r, x + r, y + r), outline=(*col, int(36 + 40 * pulse)), width=1)
 
-    # two left packets drifting toward center
-    for k, y0 in enumerate((96.0, 214.0)):
-        u = (t * 0.28 + k * 0.5) % 1.0
-        x = 30 + u * (LEFT_MAX - 40)
-        y = y0 + 4 * math.sin(u * math.pi * 2)
-        md.ellipse((x - 1.6, y - 1.6, x + 1.6, y + 1.6), fill=(*CYAN, 170))
+    if motif:
+        u = (t * 0.22) % 1.0
+        idx = int(u * (len(motif) - 1))
+        x, y, r, mu = motif[idx]
+        md.ellipse((x - 2.0, y - 2.0, x + 2.0, y + 2.0), fill=(*journey_color(x), 150))
 
     img = Image.alpha_composite(img, motion)
     return img.convert("RGB")
@@ -348,11 +394,12 @@ def main() -> None:
     rng = np.random.default_rng(21)
     left_nodes, left_edges, streams = make_left_data(rng)
     right_nodes, right_edges, _ = make_right_net(rng)
-    base = static_base(left_nodes, left_edges, streams, right_nodes, right_edges)
+    motif = make_motif()
+    base = static_base(left_nodes, left_edges, streams, right_nodes, right_edges, motif)
 
     frames = []
     for i in range(FRAMES):
-        frames.append(frame(base, i / FRAMES, left_nodes, left_edges, right_nodes, right_edges))
+        frames.append(frame(base, i / FRAMES, left_nodes, left_edges, right_nodes, right_edges, motif))
         print(f"frame {i + 1}/{FRAMES}", flush=True)
 
     frames[0].save(OUT_PNG)

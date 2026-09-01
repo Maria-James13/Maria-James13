@@ -17,20 +17,22 @@ FRAMES = 24
 DURATION_MS = 130
 
 # Restrained palette: cyan → ice blue → violet
-NAVY = (5, 8, 16)
-ICE = (186, 230, 253)
-CYAN = (56, 189, 248)
-BLUE = (96, 165, 250)
-VIOLET = (139, 124, 220)
-WHITE = (246, 248, 252)
-MUTED = (148, 163, 184)
-INK = (226, 232, 240)
+# GitHub Dark canvas #0d1117 — banner edges match the profile page.
+NAVY = (13, 17, 23)
+ICE = (176, 196, 210)
+CYAN = (88, 166, 196)
+BLUE = (110, 150, 186)
+VIOLET = (122, 128, 168)
+WHITE = (230, 237, 243)
+MUTED = (139, 148, 158)
 
 SAFE = (int(W * 0.30), int(H * 0.16), int(W * 0.70), int(H * 0.84))
 NAME_BOX = (int(W * 0.27), int(H * 0.26), int(W * 0.73), int(H * 0.74))
 LEFT_MAX = int(W * 0.31)
 RIGHT_MIN = int(W * 0.69)
-MOTIF_Y = 46
+MOTIF_Y = 52
+EDGE_X = 88.0
+EDGE_Y = 56.0
 
 
 def font(name: str, size: int) -> ImageFont.FreeTypeFont:
@@ -61,6 +63,13 @@ def in_name(x, y, pad: int = 6) -> bool:
     return NAME_BOX[0] - pad < x < NAME_BOX[2] + pad and NAME_BOX[1] - pad < y < NAME_BOX[3] + pad
 
 
+def edge_fade(x, y) -> float:
+    """1 at the interior, 0 at the frame — networks dissolve before the crop."""
+    fx = min(x, W - x) / EDGE_X
+    fy = min(y, H - y) / EDGE_Y
+    return max(0.0, min(1.0, fx)) * max(0.0, min(1.0, fy))
+
+
 def add_glow(base: Image.Image, overlay: Image.Image, blur: float, amount: float = 1.0) -> Image.Image:
     glow = overlay.filter(ImageFilter.GaussianBlur(blur))
     if amount < 1:
@@ -78,17 +87,15 @@ def radial_blob(arr, cx, cy, rx, ry, color, strength):
 def background() -> Image.Image:
     arr = np.zeros((H, W, 4), dtype=np.float32)
     arr[..., 0], arr[..., 1], arr[..., 2], arr[..., 3] = NAVY[0], NAVY[1], NAVY[2], 255
-
-    radial_blob(arr, W / 2, H / 2 + 4, 320, 128, (78, 128, 210), 0.16)
-    radial_blob(arr, 130, H * 0.48, 220, 160, (18, 80, 118), 0.08)
-    radial_blob(arr, W - 120, H * 0.46, 250, 170, (68, 48, 128), 0.10)
-    radial_blob(arr, W / 2, 18, 260, 70, (40, 70, 140), 0.04)
-
+    radial_blob(arr, W / 2, H / 2 + 2, 340, 140, (28, 36, 48), 0.22)
+    radial_blob(arr, 140, H * 0.50, 200, 150, (18, 28, 38), 0.06)
+    radial_blob(arr, W - 130, H * 0.48, 210, 150, (24, 26, 40), 0.06)
     yy, xx = np.ogrid[:H, :W]
-    nx = (xx - W / 2) / (W * 0.52)
-    ny = (yy - H / 2) / (H * 0.52)
-    vignette = np.clip(1.0 - 0.42 * (nx**2 * 0.75 + ny**2), 0.45, 1.0)
-    arr[..., :3] *= vignette[..., None]
+    nx = (xx - W / 2) / (W * 0.50)
+    ny = (yy - H / 2) / (H * 0.50)
+    vignette = np.clip(1.0 - 0.22 * (nx**2 * 0.55 + ny**2 * 0.85), 0.78, 1.0)
+    navy = np.array(NAVY, dtype=np.float32)
+    arr[..., :3] = arr[..., :3] * vignette[..., None] + navy * (1.0 - vignette[..., None])
     np.clip(arr, 0, 255, out=arr)
     return Image.fromarray(arr.astype(np.uint8), "RGBA")
 
@@ -152,7 +159,7 @@ def make_right_net(rng: np.random.Generator):
         (W - 300, np.linspace(H * 0.22, H * 0.78, 5)),
         (W - 214, np.linspace(H * 0.18, H * 0.82, 7)),
         (W - 128, np.linspace(H * 0.26, H * 0.74, 5)),
-        (W - 50, np.linspace(H * 0.36, H * 0.64, 3)),
+        (W - 58, np.linspace(H * 0.36, H * 0.64, 3)),
     ]
     layers = []
     for x, ys in layout:
@@ -179,7 +186,7 @@ def draw_streams(draw, streams):
         for a, b in zip(pts, pts[1:]):
             if in_safe(b[0], b[1], 20) or in_name(b[0], b[1], 8):
                 continue
-            draw.line([a, b], fill=(*CYAN, 28), width=1)
+            draw.line([a, b], fill=(*CYAN, int(26 * edge_fade((a[0] + b[0]) / 2, (a[1] + b[1]) / 2))), width=1)
 
 
 def make_motif():
@@ -198,33 +205,39 @@ def make_motif():
 
 def draw_motif(draw, pts):
     visible = [(x, y) for x, y, _r, _u in pts]
-    for a, b in zip(visible, visible[1:]):
-        if abs(b[0] - a[0]) > 90:
+    for p, q in zip(visible, visible[1:]):
+        if abs(q[0] - p[0]) > 90:
             continue
-        mx = (a[0] + b[0]) / 2
+        mx = (p[0] + q[0]) / 2
+        my = (p[1] + q[1]) / 2
         col = journey_color(mx)
-        draw.line([a, b], fill=(*col, 48), width=1)
+        alpha = int(42 * edge_fade(mx, my))
+        draw.line([p, q], fill=(*col, alpha), width=1)
     for x, y, r, u in pts:
         col = journey_color(x)
-        draw.ellipse((x - r, y - r, x + r, y + r), fill=(*col, int(70 + 90 * u)))
+        fade = edge_fade(x, y)
+        draw.ellipse((x - r, y - r, x + r, y + r), fill=(*col, int((55 + 80 * u) * fade)))
 
 
 def draw_nodes(draw, nodes, kind: str):
     for i, (x, y) in enumerate(nodes):
         if in_safe(x, y, 6):
             continue
+        fade = edge_fade(x, y)
+        if fade < 0.08:
+            continue
         col = journey_color(x)
         if kind == "data":
             r = 1.6 if i % 3 else 2.2
-            draw.ellipse((x - r, y - r, x + r, y + r), fill=(*col, 175))
+            draw.ellipse((x - r, y - r, x + r, y + r), fill=(*col, int(175 * fade)))
         else:
             r = 3.3 if i < len(nodes) - 3 else 4.1
             if i % 3 == 0:
-                draw.ellipse((x - r - 2, y - r - 2, x + r + 2, y + r + 2), outline=(*col, 190), width=1)
-                draw.ellipse((x - 1.3, y - 1.3, x + 1.3, y + 1.3), fill=(*col, 200))
+                draw.ellipse((x - r - 2, y - r - 2, x + r + 2, y + r + 2), outline=(*col, int(190 * fade)), width=1)
+                draw.ellipse((x - 1.3, y - 1.3, x + 1.3, y + 1.3), fill=(*col, int(200 * fade)))
             else:
-                draw.ellipse((x - r, y - r, x + r, y + r), fill=(*col, 220))
-                draw.ellipse((x - r * 2.1, y - r * 2.1, x + r * 2.1, y + r * 2.1), outline=(*col, 40), width=1)
+                draw.ellipse((x - r, y - r, x + r, y + r), fill=(*col, int(215 * fade)))
+                draw.ellipse((x - r * 2.1, y - r * 2.1, x + r * 2.1, y + r * 2.1), outline=(*col, int(40 * fade)), width=1)
 
 
 def draw_edges(draw, edges, alpha: int):
@@ -232,7 +245,8 @@ def draw_edges(draw, edges, alpha: int):
         if in_safe((p[0] + q[0]) / 2, (p[1] + q[1]) / 2, 10):
             continue
         col = journey_color((p[0] + q[0]) / 2)
-        draw.line([p, q], fill=(*col, alpha), width=1)
+        fade = edge_fade((p[0] + q[0]) / 2, (p[1] + q[1]) / 2)
+        draw.line([p, q], fill=(*col, int(alpha * fade)), width=1)
 
 
 def tracked_width(draw, text, fnt, tracking):
@@ -256,8 +270,8 @@ def draw_identity(base: Image.Image) -> Image.Image:
     # soft radial presence behind the name — ice blue, not neon
     blob = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     ba = np.zeros((H, W, 4), dtype=np.float32)
-    radial_blob(ba, cx, cy + 4, 250, 102, BLUE, 0.62)
-    ba[..., 3] = np.clip(ba[..., 0] * 0.38, 0, 96)
+    radial_blob(ba, cx, cy + 4, 240, 96, (36, 48, 64), 0.38)
+    ba[..., 3] = np.clip(ba[..., 0] * 0.28, 0, 70)
     np.clip(ba, 0, 255, out=ba)
     blob = Image.fromarray(ba.astype(np.uint8), "RGBA").filter(ImageFilter.GaussianBlur(18))
     img = Image.alpha_composite(base, blob)
@@ -267,15 +281,15 @@ def draw_identity(base: Image.Image) -> Image.Image:
     glow2 = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     g2 = ImageDraw.Draw(glow2, "RGBA")
     draw_tracked(g2, name, cy - 54, FONT_TITLE, (*WHITE, 90), 6)
-    img = add_glow(img, glow2, 4.8, 0.70)
+    img = add_glow(img, glow2, 3.6, 0.45)
 
     sharp = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     sd = ImageDraw.Draw(sharp, "RGBA")
-    draw_tracked(sd, name, cy - 54, FONT_TITLE, (*WHITE, 250), 6)
-    draw_tracked(sd, "APPLIED AI  &  MACHINE LEARNING", cy + 10, FONT_SUB, (*BLUE, 200), 2.4)
+    draw_tracked(sd, name, cy - 54, FONT_TITLE, (*WHITE, 248), 6)
+    draw_tracked(sd, "APPLIED AI  &  MACHINE LEARNING", cy + 10, FONT_SUB, (*ICE, 210), 2.4)
     statement = "Turning complex data into intelligent systems."
     bbox = sd.textbbox((0, 0), statement, font=FONT_TAG)
-    sd.text((cx - (bbox[2] - bbox[0]) / 2, cy + 40), statement, font=FONT_TAG, fill=(*MUTED, 185))
+    sd.text((cx - (bbox[2] - bbox[0]) / 2, cy + 40), statement, font=FONT_TAG, fill=(*MUTED, 205))
     img = Image.alpha_composite(img, sharp)
 
     atmosphere = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -287,7 +301,7 @@ def draw_identity(base: Image.Image) -> Image.Image:
         if in_name(x, y, 18):
             continue
         r = float(rng.uniform(0.5, 1.0))
-        ad.ellipse((x - r, y - r, x + r, y + r), fill=(*BLUE, int(rng.integers(18, 32))))
+        ad.ellipse((x - r, y - r, x + r, y + r), fill=(*BLUE, int(rng.integers(12, 22))))
     img = Image.alpha_composite(img, atmosphere)
 
     sig = Image.new("RGBA", (W, H), (0, 0, 0, 0))
@@ -296,9 +310,9 @@ def draw_identity(base: Image.Image) -> Image.Image:
     skills = "ML  ·  NLP  ·  PREDICTIVE SYSTEMS"
     lb = sgd.textbbox((0, 0), label, font=FONT_TINY)
     sb = sgd.textbbox((0, 0), skills, font=FONT_TINY)
-    rx = W - 26
-    sgd.text((rx - (lb[2] - lb[0]), H - 36), label, font=FONT_TINY, fill=(*MUTED, 130))
-    sgd.text((rx - (sb[2] - sb[0]), H - 22), skills, font=FONT_TINY, fill=(*ICE, 175))
+    rx = W - 40
+    sgd.text((rx - (lb[2] - lb[0]), H - 40), label, font=FONT_TINY, fill=(*MUTED, 150))
+    sgd.text((rx - (sb[2] - sb[0]), H - 24), skills, font=FONT_SIG, fill=(*ICE, 200))
     return Image.alpha_composite(img, sig)
 
 
@@ -307,12 +321,12 @@ def static_base(left_nodes, left_edges, streams, right_nodes, right_edges, motif
     dust = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     dd = ImageDraw.Draw(dust, "RGBA")
     dust_rng = np.random.default_rng(4)
-    for _ in range(28):
+    for _ in range(18):
         x, y = float(dust_rng.uniform(8, W - 8)), float(dust_rng.uniform(8, H - 8))
         if in_name(x, y, 20) or in_safe(x, y, 20):
             continue
         r = float(dust_rng.uniform(0.5, 1.2))
-        dd.ellipse((x - r, y - r, x + r, y + r), fill=(*journey_color(x), int(dust_rng.integers(14, 32))))
+        dd.ellipse((x - r, y - r, x + r, y + r), fill=(*journey_color(x), int(dust_rng.integers(10, 22) * edge_fade(x, y))))
     img = Image.alpha_composite(img, dust)
     net = Image.new("RGBA", (W, H), (0, 0, 0, 0))
     nd = ImageDraw.Draw(net, "RGBA")
@@ -343,7 +357,7 @@ def draw_particles(draw, edges, t, speed, count_mod):
         if in_safe(x, y, 4) or in_name(x, y, 4):
             continue
         col = journey_color(x)
-        draw.ellipse((x - 1.3, y - 1.3, x + 1.3, y + 1.3), fill=(*col, 160))
+        draw.ellipse((x - 1.3, y - 1.3, x + 1.3, y + 1.3), fill=(*col, int(140 * edge_fade(x, y))))
 
 
 def frame(base, t, left_nodes, left_edges, right_nodes, right_edges, motif) -> Image.Image:
@@ -387,7 +401,8 @@ def frame(base, t, left_nodes, left_edges, right_nodes, right_edges, motif) -> I
 FONT_TITLE = font("segoeuib.ttf", 46)
 FONT_SUB = font("segoeui.ttf", 13)
 FONT_TAG = font("segoeuil.ttf", 13)
-FONT_TINY = font("consola.ttf", 10) if Path(r"C:\Windows\Fonts\consola.ttf").exists() else font("arial.ttf", 10)
+FONT_TINY = font("segoeui.ttf", 10)
+FONT_SIG = font("segoeui.ttf", 12)
 
 
 def main() -> None:
@@ -403,7 +418,7 @@ def main() -> None:
         print(f"frame {i + 1}/{FRAMES}", flush=True)
 
     frames[0].save(OUT_PNG)
-    palette = frames[0].quantize(colors=72, method=Image.Quantize.MEDIANCUT)
+    palette = frames[0].quantize(colors=96, method=Image.Quantize.MEDIANCUT)
     quantized = [im.quantize(palette=palette, dither=Image.Dither.FLOYDSTEINBERG) for im in frames]
     quantized[0].save(
         OUT_GIF,

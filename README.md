@@ -6,14 +6,14 @@ Put this file in it as README.md, and copy assets/github-banner.gif
 -->
 
 <p align="center">
-  <img src="assets/github-banner.gif" alt="Maria James — AI / Machine Learning. Data → Patterns → Intelligence" width="100%">
+  <img src="assets/github-banner.gif" alt="Maria James — Applied AI and Machine Learning. Data to signal to intelligence." width="100%">
 </p>
 
 **AI/ML Engineer** building models that survive a real evaluation, not just a training-set score.
 
 I work end to end: leakage-safe features, honest holdouts, baselines before boosting, and APIs that serve the frozen model. Recruiters looking at this page should start with the three featured projects — they are the ones that show how I think about production ML.
 
-[GitHub](https://github.com/Maria-James13) · [LinkedIn](https://www.linkedin.com/in/maria-james-36b063340/) · [Email](mailto:mariajameskolamkuhy@gmail.com) · [Resume](https://drive.google.com/file/d/10SPtBxaV3IDBjUDJdA04dtIL5LGBsfz3/view?usp=drive_link)
+[GitHub](https://github.com/Maria-James13) · [LinkedIn](https://www.linkedin.com/in/maria-james-36b063340/) · [Email](mailto:mariajameskolamkuzhy@gmail.com) · [Resume](https://drive.google.com/file/d/10SPtBxaV3IDBjUDJdA04dtIL5LGBsfz3/view?usp=drive_link)
 
 ---
 

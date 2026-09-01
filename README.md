@@ -1,16 +1,19 @@
 <!--
 GitHub profile README.
-To publish: create a public repo named Maria-James13/Maria-James13, put this file
-in it as README.md, and it will appear on https://github.com/Maria-James13
+To publish: create a public repo named Maria-James13/Maria-James13.
+Put this file in it as README.md, and copy assets/github-banner.gif
+(plus github-banner-still.png if you want the static version).
 -->
 
-# Maria James
+<p align="center">
+  <img src="assets/github-banner.gif" alt="Maria James — AI / Machine Learning. Data → Patterns → Intelligence" width="100%">
+</p>
 
 **AI/ML Engineer** building models that survive a real evaluation, not just a training-set score.
 
 I work end to end: leakage-safe features, honest holdouts, baselines before boosting, and APIs that serve the frozen model. Recruiters looking at this page should start with the three featured projects — they are the ones that show how I think about production ML.
 
-[GitHub](https://github.com/Maria-James13) · [LinkedIn](https://www.linkedin.com/in/maria-james-36b063340/) · [Email](marijameskolamkuzhy@gmail.com) · [Resume](https://drive.google.com/file/d/1jTIifn36IlhupQEdb9N1ccIn1zUW2iat/view?usp=drive_link)
+[GitHub](https://github.com/Maria-James13) · [LinkedIn](https://www.linkedin.com/in/maria-james-36b063340/) · [Email](mailto:mariajameskolamkuhy@gmail.com) · [Resume](https://drive.google.com/file/d/10SPtBxaV3IDBjUDJdA04dtIL5LGBsfz3/view?usp=drive_link)
 
 ---
 
@@ -151,3 +154,4 @@ Why it is featured: this is the **NLP/LLM production pattern** — retrieval bef
 
 ---
 
+If you want the short version: **I freeze a model only after a baseline, a leakage check, and a time-aware score — then I put it behind an API.**

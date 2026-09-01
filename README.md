@@ -6,7 +6,7 @@ Put this file in it as README.md, and copy assets/github-banner.gif
 -->
 
 <p align="center">
-  <img src="assets/github-banner.gif" alt="Maria James — Applied AI and Machine Learning. Exploring patterns, building intelligence." width="100%">
+  <img src="assets/github-banner.gif" alt="Maria James — Applied AI and Machine Learning. Exploring patterns. Building intelligence." width="100%">
 </p>
 
 **AI/ML Engineer** building models that survive a real evaluation, not just a training-set score.

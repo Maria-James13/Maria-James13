@@ -1,4 +1,4 @@
-"""GitHub profile banner: mycelium / root network — intelligence through connection."""
+"""GitHub profile banner: aurora / flowing intelligence."""
 
 from __future__ import annotations
 
@@ -6,328 +6,152 @@ import math
 from pathlib import Path
 
 import numpy as np
-from PIL import Image, ImageDraw, ImageFilter, ImageFont
+from PIL import Image, ImageChops, ImageDraw, ImageEnhance, ImageFilter, ImageFont
 
 ROOT = Path(__file__).resolve().parent
+BASE = ROOT / "aurora-hero-base.png"
 OUT_GIF = ROOT / "github-banner.gif"
 OUT_PNG = ROOT / "github-banner.png"
 
-W, H = 1080, 360
-FRAMES = 24
-DURATION_MS = 160
+W, H = 1280, 400
+FRAMES = 16
+DURATION_MS = 210
 
-# Forest-charcoal, not GitHub-blue and not pure black.
-SOIL = (16, 18, 17)
-LIFT = (28, 32, 30)
-IVORY = (226, 223, 214)
-SAGE = (148, 166, 150)
-MIST = (132, 146, 148)
-BIO = (118, 168, 152)
-MUTED = (142, 148, 140)
-WHITE = (232, 230, 223)
-
-SAFE = (int(W * 0.29), int(H * 0.22), int(W * 0.71), int(H * 0.78))
-EDGE_X, EDGE_Y = 80.0, 52.0
+IVORY = (228, 225, 218)
+SUB = (176, 186, 204)
+MUTED = (156, 164, 182)
+NAVY = (10, 14, 26)
 
 
 def font(name: str, size: int) -> ImageFont.FreeTypeFont:
     return ImageFont.truetype(str(Path(r"C:\Windows\Fonts") / name), size)
 
 
-def lerp(a, b, t):
-    return a + (b - a) * t
+def crop_cinematic(src: Image.Image) -> Image.Image:
+    img = src.convert("RGB")
+    sw, sh = img.size
+    th = min(int(sw / (W / H)), sh)
+    # Bias slightly down so the brightest arc sits under the type.
+    top = int((sh - th) * 0.46)
+    top = max(0, min(top, sh - th))
+    return img.crop((0, top, sw, top + th)).resize((W, H), Image.Resampling.LANCZOS)
 
 
-def mix(c1, c2, t):
-    t = max(0.0, min(1.0, t))
-    return tuple(int(lerp(c1[i], c2[i], t)) for i in range(3))
+def dim_identity_well(img: Image.Image) -> Image.Image:
+    arr = np.array(img, dtype=np.float32)
+    yy, xx = np.ogrid[:H, :W]
+    cx, cy = W / 2.0, H / 2.0 - 8
+    well = np.exp(-(((xx - cx) / 268) ** 2 + ((yy - cy) / 86) ** 2)).astype(np.float32)
+    navy = np.array(NAVY, dtype=np.float32)
+    arr = arr * (1.0 - 0.28 * well[..., None]) + navy * (0.28 * well[..., None])
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB")
 
 
-def in_safe(x, y, pad: int = 12) -> bool:
-    return SAFE[0] - pad < x < SAFE[2] + pad and SAFE[1] - pad < y < SAFE[3] + pad
-
-
-def edge_fade(x, y) -> float:
-    fx = min(max(x, 0), W) 
-    fy = min(max(y, 0), H)
-    return max(0.0, min(1.0, min(fx, W - fx) / EDGE_X)) * max(
-        0.0, min(1.0, min(fy, H - fy) / EDGE_Y)
-    )
-
-
-def add_glow(base, overlay, blur, amount=1.0):
-    glow = overlay.filter(ImageFilter.GaussianBlur(blur))
-    if amount < 1:
-        glow.putalpha(glow.split()[-1].point(lambda a: int(a * amount)))
-    return Image.alpha_composite(base, glow)
-
-
-def radial_blob(arr, cx, cy, rx, ry, color, strength):
-    yy, xx = np.ogrid[: arr.shape[0], : arr.shape[1]]
-    fall = np.exp(-(((xx - cx) / rx) ** 2 + ((yy - cy) / ry) ** 2)).astype(np.float32) * strength
-    for i in range(3):
-        arr[..., i] += fall * color[i]
-
-
-def background(rng: np.random.Generator) -> Image.Image:
-    arr = np.zeros((H, W, 4), dtype=np.float32)
-    arr[..., 0], arr[..., 1], arr[..., 2], arr[..., 3] = SOIL[0], SOIL[1], SOIL[2], 255
-    radial_blob(arr, W / 2, H / 2, 340, 145, LIFT, 0.20)
-    radial_blob(arr, 180, 220, 260, 160, (22, 30, 26), 0.08)
-    radial_blob(arr, W - 160, 140, 280, 170, (20, 26, 28), 0.07)
-    # Barely visible grain — atmosphere, not noise.
-    grain = rng.normal(0, 1.1, (H, W)).astype(np.float32)
-    arr[..., :3] += grain[..., None]
+def edge_vignette(img: Image.Image) -> Image.Image:
+    arr = np.array(img, dtype=np.float32)
     yy, xx = np.ogrid[:H, :W]
     nx = (xx - W / 2) / (W * 0.5)
     ny = (yy - H / 2) / (H * 0.5)
-    vig = np.clip(1.0 - 0.20 * (nx**2 * 0.45 + ny**2), 0.80, 1.0)
-    soil = np.array(SOIL, dtype=np.float32)
-    arr[..., :3] = arr[..., :3] * vig[..., None] + soil * (1.0 - vig[..., None])
-    np.clip(arr, 0, 255, out=arr)
-    return Image.fromarray(arr.astype(np.uint8), "RGBA")
+    vig = np.clip(1.0 - 0.18 * (nx**2 * 0.42 + ny**2), 0.82, 1.0)
+    navy = np.array(NAVY, dtype=np.float32)
+    arr = arr * vig[..., None] + navy * (1.0 - vig[..., None])
+    fx = np.clip(np.minimum(xx, W - 1 - xx) / 28.0, 0, 1)
+    fy = np.clip(np.minimum(yy, H - 1 - yy) / 22.0, 0, 1)
+    edge = np.minimum(fx, fy)
+    arr = arr * edge[..., None] + navy * (1.0 - edge[..., None])
+    return Image.fromarray(np.clip(arr, 0, 255).astype(np.uint8), "RGB")
 
 
-def step_point(x, y, ang, step, rng):
-    ang += rng.normal(0, 0.22)
-    return x + math.cos(ang) * step, y + math.sin(ang) * step, ang
-
-
-def grow(
-    rng: np.random.Generator,
-    x: float,
-    y: float,
-    ang: float,
-    remaining: float,
-    depth: int,
-    step: float,
-    toward_center: bool,
-) -> list[list[tuple[float, float]]]:
-    """Irregular filaments. Recurse into offshoots. Stop before the name."""
-    paths: list[list[tuple[float, float]]] = []
-    pts = [(x, y)]
-    budget = remaining
-    while budget > 0 and depth >= 0:
-        x, y, ang = step_point(x, y, ang, step, rng)
-        if toward_center:
-            # Gentle bias inward without becoming geometric.
-            desired = 0.0 if x < W / 2 else math.pi
-            ang += 0.08 * math.sin(desired - ang)
-        if x < -8 or x > W + 8 or y < -8 or y > H + 8:
-            break
-        if in_safe(x, y, 18):
-            break
-        pts.append((x, y))
-        budget -= step
-        # Occasional natural fork — more likely when "mature" (deeper remaining originally).
-        if depth > 0 and rng.random() < 0.045 and budget > 18:
-            fork_ang = ang + rng.choice([-1, 1]) * rng.uniform(0.45, 1.05)
-            child = grow(rng, x, y, fork_ang, budget * rng.uniform(0.28, 0.55), depth - 1, step * 0.92, toward_center)
-            paths.extend(child)
-    if len(pts) > 2:
-        paths.append(pts)
-    return paths
-
-
-def make_mycelium(rng: np.random.Generator):
-    paths = []
-    # Left: sparse, fine, exploratory — growing inward.
-    for y0, ang in (
-        (42, 0.12),
-        (88, -0.08),
-        (140, 0.18),
-        (198, -0.15),
-        (255, 0.10),
-        (310, -0.05),
-    ):
-        paths.extend(
-            grow(
-                rng,
-                rng.uniform(-6, 18),
-                y0 + rng.normal(0, 8),
-                ang + rng.normal(0, 0.12),
-                remaining=rng.uniform(210, 290),
-                depth=2,
-                step=3.2,
-                toward_center=True,
-            )
-        )
-    # A few short rootlets that terminate early.
-    for _ in range(4):
-        paths.extend(
-            grow(
-                rng,
-                rng.uniform(10, 80),
-                rng.uniform(40, H - 40),
-                rng.uniform(-0.4, 0.4),
-                remaining=rng.uniform(40, 90),
-                depth=1,
-                step=2.8,
-                toward_center=True,
-            )
-        )
-    # Right: richer, more mature, still organic.
-    for y0, ang in (
-        (36, math.pi - 0.1),
-        (92, math.pi + 0.16),
-        (150, math.pi - 0.2),
-        (205, math.pi + 0.12),
-        (262, math.pi - 0.08),
-        (318, math.pi + 0.14),
-        (70, math.pi + 0.4),
-        (240, math.pi - 0.35),
-    ):
-        paths.extend(
-            grow(
-                rng,
-                rng.uniform(W - 18, W + 6),
-                y0 + rng.normal(0, 10),
-                ang + rng.normal(0, 0.15),
-                remaining=rng.uniform(250, 360),
-                depth=3,
-                step=3.0,
-                toward_center=True,
-            )
-        )
-    return paths
-
-
-def filament_color(x: float):
-    u = max(0.0, min(1.0, x / W))
-    if u < 0.4:
-        return mix(MIST, SAGE, u / 0.4)
-    return mix(SAGE, BIO, (u - 0.4) / 0.6)
-
-
-def draw_filaments(draw: ImageDraw.ImageDraw, paths: list[list[tuple[float, float]]]):
-    for pts in paths:
-        n = len(pts)
-        for i, (a, b) in enumerate(zip(pts, pts[1:])):
-            mx, my = (a[0] + b[0]) / 2, (a[1] + b[1]) / 2
-            fade = edge_fade(mx, my)
-            if fade < 0.05:
-                continue
-            t = i / max(1, n)
-            # Thicker near origin of a strand, tapering like a root.
-            width = 1 if t > 0.35 else 2
-            col = filament_color(mx)
-            alpha = int((70 + 55 * (1 - t * 0.4)) * fade)
-            draw.line([a, b], fill=(*col, alpha), width=width)
-
-
-def tracked_width(draw, text, fnt, tracking):
-    return sum(draw.textbbox((0, 0), c, font=fnt)[2] for c in text) + tracking * max(0, len(text) - 1)
-
-
-def draw_tracked(draw, text, y, fnt, fill, tracking):
-    total = tracked_width(draw, text, fnt, tracking)
+def tracked(draw: ImageDraw.ImageDraw, text: str, y: float, fnt, fill, tracking: float):
+    total = sum(draw.textbbox((0, 0), c, font=fnt)[2] for c in text) + tracking * max(0, len(text) - 1)
     x = W / 2 - total / 2
     for ch in text:
         draw.text((x, y), ch, font=fnt, fill=fill)
         x += draw.textbbox((0, 0), ch, font=fnt)[2] + tracking
 
 
-def draw_identity(base: Image.Image) -> Image.Image:
-    cx, cy = W / 2, H / 2 - 4
-    lift = np.zeros((H, W, 4), dtype=np.float32)
-    radial_blob(lift, cx, cy + 6, 255, 105, (36, 44, 40), 0.28)
-    lift[..., 3] = np.clip(lift[..., 1] * 0.22, 0, 58)
-    np.clip(lift, 0, 255, out=lift)
-    img = Image.alpha_composite(
-        base, Image.fromarray(lift.astype(np.uint8), "RGBA").filter(ImageFilter.GaussianBlur(18))
-    )
-
-    glow = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    gd = ImageDraw.Draw(glow, "RGBA")
-    draw_tracked(gd, "MARIA JAMES", cy - 54, FONT_TITLE, (*IVORY, 55), 8)
-    img = add_glow(img, glow, 2.8, 0.32)
-
-    sharp = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    sd = ImageDraw.Draw(sharp, "RGBA")
-    draw_tracked(sd, "MARIA JAMES", cy - 54, FONT_TITLE, (*IVORY, 248), 8)
-    draw_tracked(sd, "APPLIED AI  &  MACHINE LEARNING", cy + 10, FONT_SUB, (*SAGE, 195), 2.8)
-    line = "Exploring patterns, building intelligence."
+def identity_overlay() -> Image.Image:
+    ident = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    sd = ImageDraw.Draw(ident, "RGBA")
+    cx, cy = W / 2, H / 2 - 6
+    tracked(sd, "MARIA JAMES", cy - 58, FONT_TITLE, (*IVORY, 252), 11)
+    tracked(sd, "APPLIED AI  &  MACHINE LEARNING", cy + 10, FONT_SUB, (*SUB, 215), 3.4)
+    line = "Exploring patterns. Building intelligence."
     bb = sd.textbbox((0, 0), line, font=FONT_TAG)
-    sd.text((cx - (bb[2] - bb[0]) / 2, cy + 40), line, font=FONT_TAG, fill=(*MUTED, 200))
-    img = Image.alpha_composite(img, sharp)
-
-    whisper = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    wd = ImageDraw.Draw(whisper, "RGBA")
-    phrase = "patterns emerge from connection"
-    pb = wd.textbbox((0, 0), phrase, font=FONT_MICRO)
-    wd.text((36, H - 24), phrase, font=FONT_MICRO, fill=(*MUTED, 88))
-    return Image.alpha_composite(img, whisper)
+    sd.text((cx - (bb[2] - bb[0]) / 2, cy + 42), line, font=FONT_TAG, fill=(*MUTED, 215))
+    return ident
 
 
-def static_base(rng, paths) -> Image.Image:
-    img = background(rng)
-    net = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    nd = ImageDraw.Draw(net, "RGBA")
-    draw_filaments(nd, paths)
-    img = add_glow(img, net, 1.1, 0.22)
-    img = Image.alpha_composite(img, net)
-    return draw_identity(img)
+def highlight_layer(rgb: Image.Image) -> Image.Image:
+    arr = np.array(rgb, dtype=np.float32)
+    lum = arr @ np.array([0.21, 0.62, 0.17], dtype=np.float32)
+    m = np.clip((lum - 48) / 90.0, 0, 1) ** 1.35
+    layer = Image.fromarray(np.clip(arr * m[..., None], 0, 255).astype(np.uint8), "RGB")
+    return layer.filter(ImageFilter.GaussianBlur(3.2))
 
 
-def longest_paths(paths, n=3):
-    ranked = sorted(paths, key=len, reverse=True)
-    return ranked[:n]
+def shift_no_wrap(img: Image.Image, dx: int, dy: int) -> Image.Image:
+    shifted = ImageChops.offset(img, dx, dy)
+    d = ImageDraw.Draw(shifted)
+    if dx > 0:
+        d.rectangle((0, 0, dx, H), fill=NAVY)
+    elif dx < 0:
+        d.rectangle((W + dx, 0, W, H), fill=NAVY)
+    if dy > 0:
+        d.rectangle((0, 0, W, dy), fill=NAVY)
+    elif dy < 0:
+        d.rectangle((0, H + dy, W, H), fill=NAVY)
+    return shifted
 
 
-def point_on_path(pts, t):
-    if len(pts) < 2:
-        return pts[0]
-    segs = []
-    total = 0.0
-    for a, b in zip(pts, pts[1:]):
-        d = math.hypot(b[0] - a[0], b[1] - a[1])
-        segs.append((a, b, d))
-        total += d
-    target = (t % 1.0) * max(total, 1e-6)
-    acc = 0.0
-    for a, b, d in segs:
-        if acc + d >= target:
-            u = 0 if d == 0 else (target - acc) / d
-            return (lerp(a[0], b[0], u), lerp(a[1], b[1], u))
-        acc += d
-    return pts[-1]
+def frame(base_rgb: Image.Image, ident: Image.Image, glow: Image.Image, t: float) -> Image.Image:
+    breath = 1.0 + 0.028 * math.sin(2 * math.pi * t * 0.5)
+    shifted = shift_no_wrap(
+        glow,
+        int(round(2.2 * math.sin(2 * math.pi * t))),
+        int(round(1.1 * math.cos(2 * math.pi * t * 0.7))),
+    )
+    lit = Image.blend(base_rgb, ImageChops.screen(base_rgb, shifted), 0.08)
+    lit = ImageEnhance.Brightness(lit).enhance(breath)
 
-
-def frame(base, t, veins) -> Image.Image:
-    img = base.copy()
-    motion = Image.new("RGBA", (W, H), (0, 0, 0, 0))
-    md = ImageDraw.Draw(motion, "RGBA")
-    for i, pts in enumerate(veins):
-        u = (t * 0.35 + i * 0.31) % 1.0
-        x, y = point_on_path(pts, u)
-        if in_safe(x, y, 8):
+    overlay = Image.new("RGBA", (W, H), (0, 0, 0, 0))
+    od = ImageDraw.Draw(overlay, "RGBA")
+    rng = np.random.default_rng(23)
+    n = 18
+    xs = rng.uniform(W * 0.64, W * 0.96, n)
+    ys = rng.uniform(H * 0.08, H * 0.40, n)
+    for i in range(n):
+        u = (t * 0.16 + i * 0.047) % 1.0
+        x = xs[i] + 14 * u
+        y = ys[i] + 3.5 * math.sin(2 * math.pi * (u + i * 0.1))
+        if abs(x - W / 2) < 250 and abs(y - H / 2) < 70:
             continue
-        fade = edge_fade(x, y)
-        r = 1.6
-        md.ellipse((x - r, y - r, x + r, y + r), fill=(*BIO, int(90 * fade)))
-    img = Image.alpha_composite(img, motion)
-    return img.convert("RGB")
+        a = int(62 * (0.50 + 0.50 * math.sin(2 * math.pi * (u + 0.2))))
+        r = 1.1 if i % 3 else 0.8
+        od.ellipse((x - r, y - r, x + r, y + r), fill=(198, 216, 230, max(16, a)))
+
+    img = Image.alpha_composite(lit.convert("RGBA"), overlay)
+    return Image.alpha_composite(img, ident).convert("RGB")
 
 
-FONT_TITLE = font("segoeuib.ttf", 46)
-FONT_SUB = font("segoeui.ttf", 13)
-FONT_TAG = font("segoeuil.ttf", 13)
-FONT_MICRO = font("segoeui.ttf", 10)
+FONT_TITLE = font("segoeuib.ttf", 54)
+FONT_SUB = font("segoeui.ttf", 14)
+FONT_TAG = font("segoeuil.ttf", 15)
 
 
 def main() -> None:
-    rng = np.random.default_rng(17)
-    paths = make_mycelium(rng)
-    base = static_base(rng, paths)
-    veins = longest_paths(paths, 3)
+    plate = edge_vignette(dim_identity_well(crop_cinematic(Image.open(BASE))))
+    ident = identity_overlay()
+    still = Image.alpha_composite(plate.convert("RGBA"), ident)
+    still.convert("RGB").save(OUT_PNG)
+    print("wrote", OUT_PNG, flush=True)
 
-    frames = []
+    glow = highlight_layer(plate)
+    frames = [frame(plate, ident, glow, i / FRAMES) for i in range(FRAMES)]
     for i in range(FRAMES):
-        frames.append(frame(base, i / FRAMES, veins))
         print(f"frame {i + 1}/{FRAMES}", flush=True)
 
-    frames[0].save(OUT_PNG)
-    palette = frames[0].quantize(colors=72, method=Image.Quantize.MEDIANCUT)
+    palette = frames[0].quantize(colors=80, method=Image.Quantize.MEDIANCUT)
     quantized = [im.quantize(palette=palette, dither=Image.Dither.FLOYDSTEINBERG) for im in frames]
     quantized[0].save(
         OUT_GIF,
@@ -339,7 +163,6 @@ def main() -> None:
         disposal=2,
     )
     print("wrote", OUT_GIF, "size_kb", round(OUT_GIF.stat().st_size / 1024, 1))
-    print("wrote", OUT_PNG, "strands", len(paths))
 
 
 if __name__ == "__main__":
